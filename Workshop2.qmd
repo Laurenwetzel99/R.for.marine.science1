@@ -1,0 +1,411 @@
+---
+title: "Workshop2"
+format: html
+editor:  
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+# Set options, housekeeping
+knitr::opts_chunk$set(
+  echo = TRUE,
+  include = TRUE,
+  message = FALSE,
+  warning = FALSE)
+```
+
+Introduction
+
+Here we are going to wrangle in messy data on the Ross River estuary fish surveys and produce final clean tables and figure. We have 4 separate files that were provided to us by a former PhD student. We know we have data for 4 sites, 4 species, and 30 days of sampling. We also have metadata on the sites and sensor data on the environmental conditions at each site.
+
+Housekeeping
+
+```{r}
+
+#| message: true
+#| warning: false
+rm(list = ls())
+```
+
+Packages needed
+
+```{r packages echo = FALSE}
+library(tidyverse) # Inc dplyr, ggplot2, lubridate etc
+library(readxl) # For reading in excel files
+```
+
+loading files: main data set
+
+The catch data is split across 4 tabs in one excel file -
+
+you need to make sure the path is correct
+
+```{r}
+estuary_catch_log <- read_excel("data/workshop2/estuary_catch_log.xlsx")
+catch1 <- read_excel(here::here("data/workshop2/estuary_catch_log.xlsx"), sheet = "Lower_ross")
+catch2 <- read_excel("data/workshop2/estuary_catch_log.xlsx", sheet = 2)
+catch3 <- read_excel("data/workshop2/estuary_catch_log.xlsx", sheet = 3)
+catch4 <- read_excel("data/workshop2/estuary_catch_log.xlsx", sheet = 4)
+```
+
+Load individually
+
+Inspect individual tabs: Here we are looking for anomalies between workbooks and any variable naming issues
+
+```{r}
+catch1
+catch2
+catch3
+catch4
+```
+
+We definitely have naming issues, but they look to be the same. Will check again once we have combined together
+
+Bind rows together
+
+```{r}
+library(dplyr)
+catch_data <- bind_rows(catch1, catch2, catch3, catch4)
+# Clean up the environment
+rm(catch1, catch2, catch3, catch4) # Clean up the environment
+```
+
+Preliminary checks
+
+```{r}
+catch_data
+head(catch_data)
+glimpse(catch_data)
+str(catch_data)
+```
+
+Can't tell from these outputs how many levels of site and species we have. Two options: let's check those explicitly by using distinct() or can convert to factors Let's look at the distinct values first, as we might need to clean before converting to factor vars.
+
+```{r}
+catch_data |> 
+  distinct(site)
+
+catch_data |> 
+  distinct(species)
+```
+
+OK, so we have four species in there as well as four sites which look to be located at different points on the Ross River. Sites look like they correspond to select zones on the river estuary but we'll need to check this against the metadata, once loaded. We also have some issues with the site names and species names which will need to be cleaned before we can join with the metadata and taxonomic dictionary.3
+
+Next steps for catch data:
+
+- Fix site names and place in reasonable order.
+- Can decide this now or we can load the metadata and ensure consistency
+- Fix species names - to do this we'll need to make consistent and then use the taxonomic dictionary to translate to scientific names.
+
+First we'll need to load the metadata and see what that has in store for us!
+
+Load metadata
+
+```{r}
+metadata <- read_csv("data/workshop2/estuary_metadata.csv")
+```
+
+Checks
+
+```{r}
+head(metadata)
+glimpse(metadata)
+```
+
+Site names are all over the place in the metadata too - will need to standardise in both of these tabels before we can combine them
+
+Fix site names in data and metadata and convert character to factor variables
+
+```{r fix-site-names}
+  catch_data <- catch_data |>
+    mutate(
+      site = str_to_lower(str_trim(site)),
+      site = str_replace_all(site, "scientific_name", "_")) |> 
+    # Convert all chr to fct
+    mutate(across(where(is.character), as_factor)
+    )
+  
+  metadata <- metadata |>
+    mutate(
+      site_name = str_to_lower(str_trim(site_name)),
+      site_name = str_replace_all(site_name, " ", "_")) |> 
+    # Convert all chr to fct
+    mutate(across(where(is.character), as_factor)
+    )
+```
+# Recheck
+```{r recheck-site-names}
+catch_data |> 
+  str()
+# catch_data |> 
+#   distinct(site)
+str(metadata)
+
+```
+OK site names fixed in both now (but note the vars themselves still have different names - site vs site_name). We can fix this when we join the datasets together.
+Next we need to do something about the species names. Can use the taxonomic dictionary to get scientific names for the species. 
+
+###  Load Taxonomic Dictionary
+```{r load-species-dict}
+species_dict <- read_csv("data/workshop2/species_dictionary.csv")
+# Check
+head(species_dict)
+```
+We'll need to check the common names in the catch log match those in the taxonomic dictionary before we do the join.
+```{r check-species-names}
+catch_data |> 
+  distinct(species)
+# Can see these are different to the dictionary
+species_dict |>
+  distinct(common_name)
+```
+###  Standardise species (common name) variable in the catch log to match dictionary
+```{r fix-species-names}
+catch_data <- catch_data |>
+  mutate(
+    species = str_to_lower(str_trim(species)),
+    species = str_replace_all(species, " ", "_")
+  )
+```
+But species name here is still actually the common name
+### Create new variable ("scientific_name") in catch log by joining with taxonomic dictionary 
+```{r join-species-dict}
+catch_data <- catch_data |>
+  mutate(common_name = species) |>
+  left_join(species_dict, by = join_by(common_name))
+```
+
+OK so let's check our catch log again. SHould have species and site names fixed
+```{r}
+glimpse(catch_data)
+```
+```
+Yep we are good.
+
+We know we need to add the metadata in, but we also have this dataset with sonde/sensor information in it
+
+# Load the sonde data
+(Code for this is written in separate script which we can source from here)
+
+```{r}
+```{r load-sonde}
+
+source(here::here("code/diw_sensor.R"))
+```
+Notes on sensor data
+- We had 15-minute sonde data for the same 4 sites and 30 days of sampling. The script sourced above turned into daily data and removed outliers
+- There are three different environmental vars measured: temperature, salinity, and turbidity.
+- Could investigate effects of all three on fish spp abundance or pick one? Need to think about prior research and hypotheses etc.
+OK, now we can join catch data with metadata and sensor data
+```{r join-all}
+catch_data_final <- catch_data |>
+  left_join(metadata, by = join_by(site == site_name)) |>
+  left_join(sensor_daily, by = join_by(site, date))
+```
+Check 
+```{r check-final-join}
+glimpse(catch_data_final)
+```
+OK starting to look good now!
+
+But we only have 427 rows of data - doesn't seem right.. How many should we have?
+
+4 x spp
+4 x sites
+30 surveys
+
+4*4*30
+
+480!!
+
+There are some days where there were zero counts of certain species at different sites. We'll need to wrangle these into a complete dataset with 480 rows, where the zero counts are explicitly represented as 0 rather than NA. This is important for our subsequent analyses and visualisations, as we want to be able to distinguish between true absences (0) and missing data (NA).
+
+Wrangle final dataset
+
+```{r wrangle-final-zeros}
+catch_data_final <- 
+catch_data_final |> 
+  complete(
+    nesting(site, date, 
+           # lat, lon, 
+            zone, mean_temp, mean_salinity, mean_turbidity),
+    scientific_name
+  ) |>
+  mutate(
+    # Convert the resulting NA counts to 0
+    count = coalesce(count, 0)
+  )
+```
+Now we can start thinking about hypotheses and what might be going on in the ecology of these species in this ecosystem
+
+First we probably want to first check that there is an actual difference in env vars among zones
+
+Salinity
+```{r}
+# Let's make a table
+sal_sum <- 
+  catch_data_final |>
+  group_by(zone) |>
+  summarise(
+   # sem_salinity = sd(mean_salinity) / sqrt(n()),
+    sd_salinity = sd(mean_salinity, na.rm = TRUE),
+    median_salinity = median(mean_salinity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# And from this a plot
+sal_sum |> 
+  ggplot(aes(x = zone, y = median_salinity)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = median_salinity - sd_salinity, ymax = median_salinity + sd_salinity), width = 0.2) +
+  theme_minimal() +
+  labs(#title = "Median Salinity by Zone with Standard Deviation Error Bars",
+       x = "Zone",
+       y = "Median Salinity (ppt)")
+```
+```{r}
+ggsave("outputs/figures/salinity_plot.png", width = 8, height = 6, dpi = 300)
+```
+Definitely differences in salinity, as we'd expect!! And we know there has been work on some of these species about responses to salinity gradients.
+
+Let's check the other two env vars too, just to be sure.
+Turbidity
+```{r}
+turb_sum <- 
+  catch_data_final |>
+  group_by(zone) |>
+  summarise(
+    sd_turbidity = sd(mean_turbidity, na.rm = TRUE),
+    median_turbidity = median(mean_turbidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+turb_sum |>
+  ggplot(aes(x = zone, y = median_turbidity)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = median_turbidity - sd_turbidity, ymax = median_turbidity + sd_turbidity), width = 0.2) +
+  theme_minimal() +
+  labs(#title = "Median Turbidity by Zone with Standard Deviation Error Bars",
+       x = "Zone",
+       y = "Median Turbidity (NTU)")
+```
+```{r}
+ggsave("outputs/figures/turbidity_plot.png", width = 8, height = 6, dpi = 300)
+```
+ 
+ temperature
+```{r}
+temp_sum <- 
+  catch_data_final |>
+  group_by(zone) |>
+  summarise(
+    sd_temperature = sd(mean_temp, na.rm = TRUE),
+    median_temperature = median(mean_temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+temp_sum |>
+  ggplot(aes(x = zone, y = median_temperature)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = median_temperature - sd_temperature, ymax = median_temperature + sd_temperature), width = 0.2) +
+  theme_minimal() +
+  labs(#title = "Median Temperature by Zone with Standard Deviation Error Bars",
+       x = "Zone",
+       y = "Median Temperature (°C)")
+
+```
+```{r}
+ggsave("outputs/figures/temperature_plot.png", width = 8, height = 6, dpi = 300)
+```
+
+
+K so we'll continue with salinity as our main env var of interest, but we know that there are also differences in turbidity and temperature across the zones, which could also be influencing fish abundance patterns. We can discuss this in the interpretation of our results and consider potential confounding effects of these other environmental variables in our discussion.
+
+Remake salinity plot nicely for publication
+```{r}
+#| fig-cap: "Salinity Gradient across zones. Ross River Estuary System, Townsville, NQ, Australia May 2026."
+
+sal_sum |> 
+  ggplot(aes(x = zone, y = median_salinity)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = median_salinity - sd_salinity, ymax = median_salinity + sd_salinity), width = 0.2) +
+  theme_minimal() +
+  labs(#title = "Median Salinity by Zone with Standard Deviation Error Bars",
+       x = "Zone",
+       y = "Median Salinity (ppt)")
+  
+```
+```{r}
+ggsave("outputs/figures/salinity_plot_pub.png", width = 8, height = 6, dpi = 300)
+```
+
+Now we can turn to patterns in fish abundance
+Calculate summary stats 
+```{r}
+fish_stats <- catch_data_final |>
+  group_by(zone, scientific_name) |>
+  summarise(
+    mean_catch = mean(count),
+    sem_catch = sd(count) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+Plot
+
+```{r}
+fish_stats |> 
+  ggplot(aes(x = zone, y = mean_catch, fill = scientific_name)) +
+  geom_line(group = 1) +
+  # add in points from master data
+  geom_point(data = catch_data_final, aes(x = zone, y = count),
+             position = position_jitter(width = 0.2), alpha = 0.2, size = 1, inherit.aes = FALSE) + 
+  geom_point(position = "dodge", size = 4, pch = 23) +
+  # SE pretty narrow, potentially not worth plotting but let's viewer see that included
+  geom_errorbar(aes(ymin = mean_catch - sem_catch, ymax = mean_catch + sem_catch), 
+                position = position_dodge(0.9), width = 0.2) + 
+  facet_wrap(~ scientific_name, scales = "fixed") +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(face = "italic", size = 10, colour = "grey20"), # spp names in italic
+   # legend.position = "bottom"
+    legend.position = "none" # legend unnecessary
+  ) +
+  labs(
+    #title = "Predatory Fish Abundance across Estuarine Salinity Gradients", # default ggplot title appears on top
+    #subtitle = "Ross River Estuary System, May 2026",
+    x = "Spatial Zone",
+    # scientific label for y axis of n day -1 use regex to get superscript
+    y = expression("Abundance (n day"^-1*")"),
+  #  y = "Daily abundance (n day^-1)"
+    y = "Abundance (per day)"
+  )
+```
+
+
+
+```{r}
+ggsave("outputs/figures/fish_abundance_plot.png", width = 8, height = 6, dpi = 300)
+```
+
+
+
